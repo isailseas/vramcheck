@@ -3,7 +3,32 @@
 vramcheck TUI — compact interactive terminal UI
 """
 
-import os, sys, shutil, termios, tty, re as _re
+import os, sys, shutil, re as _re
+
+# ── Cross-platform raw terminal input ────────────────────────────────────────
+if sys.platform == "win32":
+    import msvcrt
+    def _readchar_impl():
+        ch = msvcrt.getwch()
+        # msvcrt returns '' for special keys (arrows etc.) — read second byte
+        if ch in ('\x00', '\xe0'):
+            ch2 = msvcrt.getwch()
+            # Map Windows arrow scan codes to ANSI sequences so the rest of
+            # the code (which already handles ESC [ A/B) just works.
+            _map = {'H': '\x1b[A', 'P': '\x1b[B', 'K': '\x1b[D', 'M': '\x1b[C'}
+            return _map.get(ch2, '')
+        return ch
+else:
+    import termios, tty
+    def _readchar_impl():
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            ch = sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        return ch
 
 from vramcheck import __version__
 
@@ -70,14 +95,7 @@ def box_row(s, w, edge=True):
 
 # ── Readchar / readline with autocomplete ─────────────────────────────────────
 def readchar():
-    fd = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)
-    try:
-        tty.setraw(fd)
-        ch = sys.stdin.read(1)
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
-    return ch
+    return _readchar_impl()
 
 
 def readline_with_autocomplete(prompt_str, completions):
@@ -138,14 +156,26 @@ def readline_with_autocomplete(prompt_str, completions):
             continue
 
         if ch == '\x1b':
-            nxt = sys.stdin.read(1)
-            if nxt == '[':
-                arrow = sys.stdin.read(1)
-                if showing_ac and ac_items:
-                    if arrow in ('A', 'B'):
-                        if ac_lines_shown: clear_ac(ac_lines_shown + 1)
-                        ac_idx = (ac_idx + (-1 if arrow == 'A' else 1)) % len(ac_items)
-                        ac_lines_shown = show_ac(ac_items, ac_idx)
+            # Unix: read the rest of the escape sequence
+            if sys.platform != "win32":
+                nxt = sys.stdin.read(1)
+                if nxt == '[':
+                    arrow = sys.stdin.read(1)
+                    if showing_ac and ac_items:
+                        if arrow in ('A', 'B'):
+                            if ac_lines_shown: clear_ac(ac_lines_shown + 1)
+                            ac_idx = (ac_idx + (-1 if arrow == 'A' else 1)) % len(ac_items)
+                            ac_lines_shown = show_ac(ac_items, ac_idx)
+            render_prompt()
+            continue
+
+        # Windows: shim returns full '\x1b[A' / '\x1b[B' for arrow keys
+        if sys.platform == "win32" and isinstance(ch, str) and ch.startswith('\x1b['):
+            arrow = ch[2] if len(ch) > 2 else ''
+            if showing_ac and ac_items and arrow in ('A', 'B'):
+                if ac_lines_shown: clear_ac(ac_lines_shown + 1)
+                ac_idx = (ac_idx + (-1 if arrow == 'A' else 1)) % len(ac_items)
+                ac_lines_shown = show_ac(ac_items, ac_idx)
             render_prompt()
             continue
 
@@ -482,7 +512,7 @@ def repl():
             render_help()
 
         elif cmd in ("/clear", "clear"):
-            os.system("clear")
+            os.system("cls" if sys.platform == "win32" else "clear")
             render_splash(current_gpu["name"], current_gpu["vram_gb"], gpu_count, model_count)
 
         elif cmd == "/gpus":
