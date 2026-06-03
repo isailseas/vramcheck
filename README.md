@@ -34,21 +34,15 @@ $ vramcheck
 
 ## Install
 
-From PyPI:
-
-```bash
-pip install vramcheck
-```
-
 From source:
 
 ```bash
-git clone https://github.com/yourusername/vramcheck
+git clone https://github.com/isailseas/vramcheck
 cd vramcheck
 pip install -e .
 ```
 
-Requirements: Python 3.10+, `rich` (installed automatically).
+Requirements: Python 3.10+.
 
 ## Usage
 
