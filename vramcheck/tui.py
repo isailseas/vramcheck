@@ -5,8 +5,16 @@ vramcheck TUI — compact interactive terminal UI
 
 import os, sys, shutil, termios, tty, re as _re
 
+from vramcheck import __version__
+
+
+from vramcheck import __version__
+
+
 # ── Palette ──────────────────────────────────────────────────────────────────
 R = "\033[0m"
+def fg(n):   return f"\033[38;5;{n}m"
+def fg(n):   return f"\033[38;5;{n}m"
 def fg(n):   return f"\033[38;5;{n}m"
 def bold(s): return f"\033[1m{s}{R}"
 
@@ -176,12 +184,13 @@ def readline_with_autocomplete(prompt_str, completions):
 
 VENDOR_CLR = {"nvidia": TEAL, "amd": fg(203), "intel": fg(39)}
 
-VERSION = "1.0.0"
+from vramcheck import __version__
 
 COMMANDS = [
     {"cmd": "/help",   "desc": "command reference"},
     {"cmd": "/gpus",   "desc": "list supported GPUs"},
     {"cmd": "/models", "desc": "list known models"},
+    {"cmd": "suggest", "desc": "suggest best models for your GPU"},
     {"cmd": "/clear",  "desc": "clear screen"},
     {"cmd": "/quit",   "desc": "exit"},
 ]
@@ -192,8 +201,8 @@ def render_splash(gpu_name, vram_gb, gpu_count, model_count):
     w = W()
 
     # Header
-    head_l = t(TEAL, " vramcheck") + t(DIM, f" v{VERSION}")
-    head_r = t(DIM, f"{gpu_count} GPUs  {model_count} models")
+    head_l = t(TEAL, " vramcheck") + t(DIM, f" v{__version__}")
+    head_r = t(DIM, f"{gpu_count} GPUs {model_count} models")
     gap = w - vlen(head_l) - vlen(head_r) - 2
     print(t(BORDER, "╭") + head_l + t(DIMMER, "·" * max(2, gap)) + head_r + t(BORDER, "╮"))
 
@@ -201,29 +210,35 @@ def render_splash(gpu_name, vram_gb, gpu_count, model_count):
     print(box_row("", w))
 
     # Logo + tagline + gpu info
-    # Tight "VRAM" ASCII art — each letter 3 wide, separated by single space gap
-    logo1 = t(TEAL, "╦ ╦ ╦═╗ ╔═╗ ╔╦╗")
-    logo2 = t(TEAL, "║ ║ ║   ╠═╣ ║║║")
-    logo3 = t(TEAL, "╚═╝ ╩   ╝ ╩ ╩ ╩")
+    LOGO_SPLASH_LINES = [
+        "█████ █████ ████████   ██████   █████████████  ",
+        "░░███ ░░███ ░░███░░███ ░░░░░███ ░░███░░███░░███ ",
+        " ░███  ░███  ░███ ░░░   ███████  ░███ ░███ ░███ ",
+        " ░░███ ███   ░███      ███░░███  ░███ ░███ ░███ ",
+        "  ░░█████    █████    ░░████████ █████░███ █████",
+        "   ░░░░░    ░░░░░      ░░░░░░░░ ░░░░░ ░░░ ░░░░░ ",
+        "                                                ",
+    ]
+
+    # Print each line of the logo without gaps (edge=False)
+    for line in LOGO_SPLASH_LINES:
+        print(box_row(t(TEAL, line), w, edge=False))
 
     tag  = t(DIM, "check if it runs")
     info = (t(DIMMER, "gpu ") + t(TEAL, gpu_name.title()) +
             t(DIMMER, "  ram ") + t(TEAL, f"{vram_gb} GB"))
-    row1 = f"{logo1}  {tag}  {info}"
-    print(box_row(row1, w))
+    print(box_row(f"{tag}  {info}", w))
 
     hint = (t(ORANGE, "check") + t(DIM, " <model>") +
             t(BORDER, " │ ") +
             t(ORANGE, "gpu") + t(DIM, " <name>") +
             t(BORDER, " │ ") +
-            t(ORANGE, "ctx") + t(DIM, " <size>"))
-    print(box_row(f"{logo2}  {hint}", w))
-
-    print(box_row(logo3, w))
+            t(ORANGE, "ctx") + t(DIM, " <size>")
+    )
+    print(box_row(hint, w))
 
     print(box_bot(w))
     print()
-
 
 # ── Result box — compact table, aligned columns ───────────────────────────────
 def render_result(model_info, gpu_info, quants, best, ollama_cmd, ctx):
@@ -298,19 +313,35 @@ def render_result(model_info, gpu_info, quants, best, ollama_cmd, ctx):
     print()
 
 
+# ── ASCII Logo ─────────────────────────────────────────────────────────────────
+LOGO_LINES = [
+    "█████ █████ ████████   ██████   █████████████  ",
+    "░░███ ░░███ ░░███░░███ ░░░░░███ ░░███░░███░░███ ",
+    " ░███  ░███  ░███ ░░░   ███████  ░███ ░███ ░███ ",
+    " ░░███ ███   ░███      ███░░███  ░███ ░███ ░███ ",
+    "  ░░█████    █████    ░░████████ █████░███ █████",
+    "   ░░░░░    ░░░░░      ░░░░░░░░ ░░░░░ ░░░ ░░░░░ ",
+]
+
+
 # ── Help ───────────────────────────────────────────────────────────────────────
 def render_help():
     w = W()
     cmds = [
         ("check <model>",         "check model vs current GPU"),
-        ("check <model> --ctx N", "context: 2048–32768"),
+        ("check <model> --ctx N", "context: 2048-32768"),
         ("check <model> --all",   "show all quants"),
+        ("suggest",               "suggest best models for current GPU"),
         ("gpu <name>",            "switch GPU"),
         ("ctx <size>",            "set context window"),
         ("list  models | gpus",   "list known models or GPUs"),
         ("/help",                 "this screen"),
         ("/quit",                 "exit"),
     ]
+    # Logo at top of help
+    for ln in LOGO_LINES:
+        print(t(TEAL, ln))
+    print()
     print(box_top(w, t(ORANGE, "commands")))
     for cmd, desc in cmds:
         row = t(TEAL, f"  {cmd:<26}") + t(DIM, desc)
@@ -416,7 +447,10 @@ def repl():
     gpu_count   = sum(len(v) for v in gdb.values())
     model_count = len(mdb["known_models"])
 
-    current_gpu = find_gpu("gtx 1660 super")
+    # Use auto-detection for default GPU
+    current_gpu = find_gpu("auto")
+    if current_gpu is None:
+        current_gpu = find_gpu("gtx 1660 super")  # fallback
     current_ctx = 4096
 
     render_splash(current_gpu["name"], current_gpu["vram_gb"], gpu_count, model_count)
@@ -484,15 +518,43 @@ def repl():
                 current_gpu = g
                 render_gpu_ok(g)
 
-        elif cmd == "list":
-            sub = tokens[1].lower() if len(tokens) > 1 else ""
-            if sub == "gpus":
-                render_gpu_list()
-            elif sub == "models":
-                render_model_list()
-            else:
-                render_warn("list models  |  list gpus")
+        elif cmd == "suggest":
+            from vramcheck.model import suggest_models
+            suggestions = suggest_models(current_gpu["vram_gb"], current_ctx)
 
+            if not suggestions:
+                render_warn("No models fit in your GPU's VRAM")
+                continue
+
+            print(box_top(W(), t(ORANGE, "Suggested Models")))
+            print(box_row(t(DIM, f"  {'Tier':<6}{'Model':<24}{'Params':<8}{'Quant':<8}{'VRAM':<8}{'Headroom':<10}"), W()))
+            print(box_row(t(BORDER, "  " + "─" * (W() - 8)), W()))
+
+            for m in suggestions:
+                tier_clr = {"S": GREEN, "A": TEAL, "B": DIM, "C": DIMMER}.get(m["tier"], DIM)
+                tier_str = f"  {m['tier']:<5}"
+                params_str = f"{m['params_b']}B".ljust(8)
+                vram_str = f"{m['vram_gb']}GB".ljust(8)
+                headroom_str = f"{m['headroom_gb']}GB"
+                row = (
+                    f"{t(tier_clr, tier_str)}" +
+                    f"{t(TEAL, m['name'].ljust(24))}" +
+                    f"{t(DIM, params_str)}" +
+                    f"{t(ORANGE, m['best_quant'].ljust(8))}" +
+                    f"{t(DIM, vram_str)}" +
+                    f"{t(GREEN if m['headroom_gb'] > 0.5 else YELLOW, headroom_str)}"
+                )
+                print(box_row(row, W()))
+
+            print(box_bot(W()))
+            print()
+
+            # Recommend the top one
+            top = suggestions[0]
+            print(t(GREEN, "  ✓") + t(DIM, " Recommended: ") +
+                  t(TEAL, top["name"]) + t(DIM, f" ({top['tier']} tier)"))
+            print(t(DIM, "  ") + t(ORANGE, f"ollama run {top['name']}:{top['best_quant']}"))
+            print()
         elif cmd == "check":
             if len(tokens) < 2:
                 render_warn("check <model>   e.g.  check llama3:8b")

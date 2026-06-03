@@ -1,4 +1,12 @@
-# vramcheck
+
+
+    █████ █████ ████████   ██████   █████████████  
+    ░░███ ░░███ ░░███░░███ ░░░░░███ ░░███░░███░░███ 
+     ░███  ░███  ░███ ░░░   ███████  ░███ ░███ ░███ 
+     ░░███ ███   ░███      ███░░███  ░███ ░███ ░███ 
+      ░░█████    █████    ░░████████ █████░███ █████
+       ░░░░░    ░░░░░      ░░░░░░░░ ░░░░░ ░░░ ░░░░░ 
+
 
 **Will it run?** A CLI tool that tells you exactly which quantisation of a local AI model fits in your GPU's VRAM, estimates tokens/sec, and gives you the Ollama command to run it.
 
@@ -73,6 +81,7 @@ vramcheck --version
 
 | Command | Description |
 |---|---|
+| `suggest` | suggest the best performing model for the current GPU |
 | `check <model>` | Check a model against the current GPU |
 | `check <model> --ctx N` | Set context window (2048–32768) |
 | `check <model> --all` | Show all quants including ones that won't fit |

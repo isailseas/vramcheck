@@ -10,6 +10,7 @@ import re
 import sys
 
 from vramcheck import __version__
+from vramcheck.model import pick_best_quant
 
 DEFAULT_CONTEXT = 4096
 
@@ -29,18 +30,6 @@ def build_ollama_cmd(model_name: str, quant: str) -> str:
     return f"ollama run {base}:{qt}"
 
 
-def pick_best_quant(quants):
-    fitting = [q for q in quants if q["status"] in ("fits", "tight")]
-    if not fitting:
-        return None
-    preferred = ["Q4_K_M", "Q5_K_M", "Q4_K_S", "Q5_K_S", "Q4_0", "Q3_K_M", "Q3_K_L", "Q6_K", "Q8_0"]
-    for p in preferred:
-        for q in fitting:
-            if q["quant"] == p:
-                return q
-    return max(fitting, key=lambda x: x["multiplier"])
-
-
 def run_oneshot(args):
     from vramcheck.gpu import find_gpu, list_gpus
     from vramcheck.model import resolve_model, get_quant_recommendations, OVERHEAD_BUFFER, load_model_db
@@ -53,7 +42,22 @@ def run_oneshot(args):
         print_gpu_list(list_gpus())
         return 0
 
-    gpu = find_gpu(args.gpu)
+    if args.suggest:
+        gpu = find_gpu(args.gpu) if args.gpu else find_gpu("auto")
+        if gpu is None:
+            print_error(f"GPU not found: '{args.gpu}'")
+            return 1
+        from vramcheck.model import suggest_models
+        suggestions = suggest_models(gpu["vram_gb"], args.context or DEFAULT_CONTEXT)
+        print(f"\nRecommended models for {gpu['name'].title()} ({gpu['vram_gb']}GB VRAM):\n")
+        for m in suggestions:
+            print(f"  [{m['tier']}] {m['name']} ({m['params_b']}B) → {m['best_quant']} → {m['vram_gb']}GB")
+        if suggestions:
+            top = suggestions[0]
+            print(f"\nTop pick: ollama run {top['name']}:{top['best_quant']}\n")
+        return 0
+
+    gpu = find_gpu(args.gpu) if args.gpu else find_gpu("auto")
     if gpu is None:
         print_error(f"GPU not found: '{args.gpu}'")
         print_warning("Run `vramcheck --list-gpus` to see supported GPUs.")
@@ -112,16 +116,17 @@ examples:
         """,
     )
     parser.add_argument("model", nargs="?", help="Model name (e.g. llama3:8b). Omit for TUI.")
-    parser.add_argument("--gpu", "-g", default="gtx 1660 super", help="GPU name (default: gtx 1660 super)")
+    parser.add_argument("--gpu", "-g", default=None, help="GPU name (default: auto-detected)")
     parser.add_argument("--context", "-c", type=int, choices=[2048, 4096, 8192, 16384, 32768])
     parser.add_argument("--all", "-a", action="store_true", help="Show all quants")
     parser.add_argument("--list-gpus", action="store_true", help="List supported GPUs")
+    parser.add_argument("--suggest", action="store_true", help="Suggest best models for your GPU")
     parser.add_argument("--version", "-V", action="version", version=f"vramcheck {__version__}")
 
     args = parser.parse_args()
 
     # No model + no list-gpus → launch TUI
-    if not args.model and not args.list_gpus:
+    if not args.model and not args.suggest:
         from vramcheck.tui import repl
         repl()
         sys.exit(0)

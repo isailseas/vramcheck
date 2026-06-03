@@ -89,5 +89,36 @@
     "nomic-embed-text-v2":  { "params_b": 0.347, "hf_id": "nomic-ai/nomic-embed-text-v2-moe" },
     "bge-large-en":         { "params_b": 0.335, "hf_id": "BAAI/bge-large-en-v1.5" },
     "bge-m3":               { "params_b": 0.57, "hf_id": "BAAI/bge-m3" }
+  },
+
+  "model_tiers": {
+    "s": [
+      "deepseek-r1:32b", "deepseek-r1:70b", "deepseek-v3:671b",
+      "llama3.1:405b", "command-r-plus:104b",
+      "qwen2.5:72b", "llama3.1:70b", "llama3.3:70b"
+    ],
+    "a": [
+      "deepseek-r1:14b", "deepseek-r1:8b", "deepseek-r1:7b",
+      "llama3.1:8b", "mixtral:8x7b", "mixtral:8x7b-instruct",
+      "command-r:35b", "qwen2.5:32b", "qwen3:32b", "qwen3:14b",
+      "gemma3:27b", "gemma2:27b", "codellama:34b",
+      "phi4", "phi3:medium", "qwen2:72b", "llama3:70b"
+    ],
+    "b": [
+      "deepseek-r1:1.5b", "qwen3:8b", "qwen2.5:14b", "qwen2.5:7b",
+      "qwen2.5-coder:7b", "gemma3:12b", "gemma3:4b", "gemma2:9b",
+      "mistral:7b", "mistral:7b-instruct", "llama3.2:3b", "llama3:8b",
+      "codellama:13b", "codellama:7b", "codegemma:7b",
+      "starcoder2:15b", "phi3.5:mini", "phi3:mini",
+      "qwen3:4b", "qwen2.5:3b"
+    ],
+    "c": [
+      "gemma3:1b", "gemma2:2b", "gemma:2b", "gemma:7b",
+      "qwen2.5-coder:1.5b", "qwen3:1.7b", "qwen3:0.6b",
+      "qwen2.5:1.5b", "qwen2.5:0.5b", "qwen2:7b", "qwen2:1.5b", "qwen2:0.5b",
+      "llama3.2:1b", "codegemma:2b", "starcoder2:7b", "starcoder2:3b",
+      "nomic-embed-text", "nomic-embed-text-v2", "mxbai-embed-large",
+      "bge-large-en", "bge-m3"
+    ]
   }
 }

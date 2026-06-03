@@ -97,6 +97,24 @@ def get_quant_recommendations(params_b: float, available_vram_gb: float, context
     return results
 
 
+PREFERRED_QUANT_ORDER = [
+    "Q4_K_M", "Q5_K_M", "Q4_K_S", "Q5_K_S",
+    "Q4_0", "Q3_K_M", "Q3_K_L", "Q6_K", "Q8_0"
+]
+
+
+def pick_best_quant(quants: list[dict]) -> Optional[dict]:
+    """Pick best fitting quant from a list of recommendations."""
+    fitting = [q for q in quants if q["status"] in ("fits", "tight")]
+    if not fitting:
+        return None
+    for p in PREFERRED_QUANT_ORDER:
+        for q in fitting:
+            if q["quant"] == p:
+                return q
+    return max(fitting, key=lambda x: x["multiplier"])
+
+
 def estimate_tokens_per_sec(params_b: float, bandwidth_gbps: float, quant_multiplier: float) -> int:
     """
     Rough tok/s estimate based on memory bandwidth.
@@ -110,21 +128,55 @@ def estimate_tokens_per_sec(params_b: float, bandwidth_gbps: float, quant_multip
     return max(1, round(tps))
 
 
-def fetch_hf_info(hf_id: str) -> Optional[dict]:
+def suggest_models(available_vram_gb: float, context_size: int = 4096, limit: int = 10) -> list[dict]:
     """
-    Try to fetch basic model info from Hugging Face API.
-    Returns dict with downloads, likes etc or None on failure.
+    Suggest the best models that fit in the given VRAM.
+    Returns a list of models ranked by tier (S > A > B > C) and within each tier by params desc.
+    Each entry includes the model info, best quant, estimated vram, headroom, and tok/s.
     """
-    url = f"https://huggingface.co/api/models/{hf_id}"
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "vramcheck/1.0"})
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read())
-            return {
-                "downloads": data.get("downloads", 0),
-                "likes": data.get("likes", 0),
-                "pipeline_tag": data.get("pipeline_tag", "unknown"),
-                "tags": data.get("tags", []),
-            }
-    except Exception:
-        return None
+    db = load_model_db()
+    known = db["known_models"]
+    tiers = db.get("model_tiers", {})
+
+    # Build tier lookup: model_name -> tier_rank (S=0, A=1, B=2, C=3)
+    tier_rank = {}
+    tier_order = {"s": 0, "a": 1, "b": 2, "c": 3}
+    for tier_name, models in tiers.items():
+        rank = tier_order.get(tier_name, 3)
+        for name in models:
+            tier_rank[name] = rank
+
+    candidates = []
+
+    for name, info in known.items():
+        params_b = info["params_b"]
+
+        # Skip embedding models for general suggestion
+        if params_b < 0.5:
+            continue
+
+        # Find the best quant that fits
+        quants = get_quant_recommendations(params_b, available_vram_gb, context_size)
+        best = pick_best_quant(quants)
+
+        if best is None:
+            continue
+
+        # Use placeholder bandwidth for tok/s estimate (can be refined later with actual GPU bw)
+        tps = estimate_tokens_per_sec(params_b, 336.1, best["multiplier"])
+        rank = tier_rank.get(name, 3)
+
+        candidates.append({
+            "name": name,
+            "params_b": params_b,
+            "tier": ["S", "A", "B", "C"][rank],
+            "tier_rank": rank,
+            "best_quant": best["quant"],
+            "vram_gb": best["vram_gb"],
+            "headroom_gb": best["headroom_gb"],
+        })
+
+    # Sort by tier first (S highest), then by params desc within tier
+    candidates.sort(key=lambda x: (x["tier_rank"], -x["params_b"]))
+
+    return candidates[:limit]
